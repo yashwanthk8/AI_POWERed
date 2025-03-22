@@ -19,6 +19,7 @@
     "chart.js": "^4.4.6",
     "cors": "^2.8.5",
     "csv-parser": "^3.0.0",
+    "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "flowbite": "^2.5.2",
     "lucide-react": "^0.474.0",

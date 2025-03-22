@@ -4,14 +4,15 @@ import cors from "cors";
 import path from "path";
 import fs from "fs";
 import mongoose from "mongoose";
+import 'dotenv/config'; // Load environment variables
 
 // Initialize express app
 const app = express();
-const port = 5003;
+const port = process.env.UPLOAD_SERVER_PORT || 5004;
 
 // MongoDB connection string
-const dbURI = "mongodb://localhost:27017/yourDatabaseName"; // Replace with your database URL
-mongoose.connect(dbURI, { useNewUrlParser: true, useUnifiedTopology: true })
+const dbURI = process.env.MONGODB_URI || "mongodb://localhost:27017/yourDatabaseName"; // Replace with your database URL
+mongoose.connect(dbURI)
     .then(() => console.log("MongoDB connected"))
     .catch((err) => console.error("Error connecting to MongoDB:", err));
 

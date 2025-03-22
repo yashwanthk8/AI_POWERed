@@ -7,16 +7,20 @@ import csvParser from 'csv-parser'; // For CSV parsing
 import xlsx from 'xlsx'; // For Excel parsing
 import fs from 'fs';
 import path from 'path'; // For handling file paths
+import 'dotenv/config'; // Load environment variables
+
 const app = express();
 // MongoDB connection
-mongoose.connect('mongodb://localhost:27017/excelFile', {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-});
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/excelFile';
+mongoose.connect(MONGODB_URI)
+  .then(() => console.log("MongoDB connected successfully"))
+  .catch(err => console.error("MongoDB connection error:", err));
 
 // Enable CORS for frontend access
 app.use(cors({
-  origin: 'http://localhost:5173', // Your frontend URL
+  origin: process.env.NODE_ENV === 'production' 
+    ? process.env.FRONTEND_URL || 'https://your-production-domain.com' 
+    : 'http://localhost:5173', // Your frontend URL in development
   methods: ['GET', 'POST'],
   credentials: true,
 }));
@@ -127,7 +131,7 @@ app.get('/analyze', async (req, res) => {
 
 
 // Start the server
-const PORT = 3000; // Change to desired port (5000 as per earlier example)
+const PORT = process.env.PORT || 3000; // Use environment variable or default to 3000
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 });
