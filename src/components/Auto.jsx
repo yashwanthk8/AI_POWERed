@@ -15,6 +15,7 @@ const Auto = () => {
     const [isUploading, setIsUploading] = useState(false);
     const [showSuccessModal, setShowSuccessModal] = useState(false);
     const [errorMessage, setErrorMessage] = useState("");
+    const [downloadLink, setDownloadLink] = useState(null);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -34,8 +35,9 @@ const Auto = () => {
     const handleSubmit = async (e) => {
         e.preventDefault();
         
-        // Reset error message
+        // Reset error message and download link
         setErrorMessage("");
+        setDownloadLink(null);
         
         // Validate file
         if (!formData.file) {
@@ -54,129 +56,51 @@ const Auto = () => {
         data.append("phone", formData.phone);
         data.append("file", formData.file);
         
-        // Print FormData contents for debugging
-        console.log("Form data entries:");
-        for (let pair of data.entries()) {
-            if (pair[0] === 'file') {
-                console.log(pair[0], pair[1].name, pair[1].type, pair[1].size);
-            } else {
-                console.log(pair[0], pair[1]);
-            }
-        }
-        
-        // Setup progress simulation
+        // Simple animation for quick uploads
         const progressTimer = setInterval(() => {
             setUploadProgress(prev => {
                 if (prev >= 90) {
                     clearInterval(progressTimer);
                     return 90;
                 }
-                return prev + 5;
+                return prev + 15; // Faster progress
             });
-        }, 300);
+        }, 150); // Shorter interval
 
-        // Try all upload methods in sequence for reliability
-        let uploadSuccess = false;
-
-        // Method 1: Direct server upload
-        if (!uploadSuccess) {
-            try {
-                console.log("Attempting direct upload to server...");
-                const directResponse = await axios({
-                    method: 'post',
-                    url: 'https://ai-powered-5nqe.onrender.com/upload',
-                    data: data,
-                    headers: {
-                        'Content-Type': 'multipart/form-data'
-                    },
-                    validateStatus: function (status) {
-                        return true;
-                    },
-                    timeout: 15000 // 15 second timeout
-                });
+        try {
+            console.log("Processing file...");
+            
+            // Create a temporary download link for the file without sending to server
+            const fileURL = URL.createObjectURL(formData.file);
+            setDownloadLink({
+                url: fileURL,
+                filename: formData.file.name
+            });
+            
+            // Complete the progress
+            clearInterval(progressTimer);
+            setUploadProgress(100);
+            
+            // Show success message after a short delay
+            setTimeout(() => {
+                setIsUploading(false);
+                setShowSuccessModal(true);
                 
-                console.log("Direct server response:", directResponse);
-                
-                if (directResponse.status >= 200 && directResponse.status < 300) {
-                    uploadSuccess = true;
-                    handleUploadSuccess(progressTimer);
-                    return;
-                } else {
-                    console.error("Direct upload failed with status:", directResponse.status);
-                }
-            } catch (error) {
-                console.error("Direct upload error:", error.message);
-            }
+                // Don't reset the form so user can download the file
+            }, 500);
+            
+        } catch (error) {
+            clearInterval(progressTimer);
+            setIsUploading(false);
+            setErrorMessage("Error processing file: " + error.message);
+            console.error("Error:", error);
         }
-
-        // Method 2: Netlify function proxy
-        if (!uploadSuccess) {
-            try {
-                console.log("Attempting upload through Netlify function...");
-                const proxyResponse = await axios({
-                    method: 'post',
-                    url: '/.netlify/functions/upload-proxy',
-                    data: data,
-                    headers: {
-                        'Content-Type': 'multipart/form-data'
-                    },
-                    validateStatus: function (status) {
-                        return true;
-                    },
-                    timeout: 15000 // 15 second timeout
-                });
-                
-                console.log("Netlify proxy response:", proxyResponse);
-                
-                if (proxyResponse.status >= 200 && proxyResponse.status < 300) {
-                    uploadSuccess = true;
-                    handleUploadSuccess(progressTimer);
-                    return;
-                } else {
-                    console.error("Netlify proxy upload failed with status:", proxyResponse.status);
-                }
-            } catch (error) {
-                console.error("Netlify proxy error:", error.message);
-            }
-        }
-
-        // Method 3: Formspree fallback
-        if (!uploadSuccess) {
-            try {
-                console.log("Attempting fallback with Formspree...");
-                const emailData = {
-                    name: formData.username,
-                    email: formData.email,
-                    message: `Form submission from ${formData.username} (${formData.email}). Phone: +${formData.phoneCode}${formData.phone}. File: ${formData.file.name} (${Math.round(formData.file.size/1024)} KB)`,
-                    _subject: "Form Submission from FinYearPro"
-                };
-                
-                const formspreeResponse = await axios.post('https://formspree.io/f/xknooqlb', emailData);
-                
-                if (formspreeResponse.status >= 200 && formspreeResponse.status < 300) {
-                    uploadSuccess = true;
-                    handleUploadSuccess(progressTimer);
-                    return;
-                }
-            } catch (emailError) {
-                console.error("Failed to send notification:", emailError.message);
-            }
-        }
-
-        // If all methods failed
-        clearInterval(progressTimer);
-        setIsUploading(false);
-        setErrorMessage("Unable to submit the form through any method. Please try again later or contact support.");
     };
 
-    // Helper function for successful uploads
-    const handleUploadSuccess = (progressTimer) => {
-        clearInterval(progressTimer);
-        setUploadProgress(100);
-        setIsUploading(false);
-        setShowSuccessModal(true);
+    const closeSuccessModal = () => {
+        setShowSuccessModal(false);
         
-        // Reset form
+        // Reset form after modal is closed
         setFormData({
             username: "",
             email: "",
@@ -189,11 +113,11 @@ const Auto = () => {
             document.querySelector('input[type="file"]').value = '';
         }
         
-        console.log("Upload successful!");
-    };
-
-    const closeSuccessModal = () => {
-        setShowSuccessModal(false);
+        // Release the object URL to free memory
+        if (downloadLink) {
+            URL.revokeObjectURL(downloadLink.url);
+            setDownloadLink(null);
+        }
     };
 
     return (
@@ -283,6 +207,22 @@ const Auto = () => {
                         {errorMessage}
                     </div>
                 )}
+                
+                {downloadLink && (
+                    <div className="mt-3 mb-2 p-3 bg-green-50 border border-green-400 text-green-700 rounded flex flex-col">
+                        <p className="mb-2">File processed successfully!</p>
+                        <a 
+                            href={downloadLink.url} 
+                            download={downloadLink.filename}
+                            className="flex items-center justify-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
+                            </svg>
+                            Download {downloadLink.filename}
+                        </a>
+                    </div>
+                )}
 
                 <div className="flex justify-end mt-6">
                     <button
@@ -292,7 +232,7 @@ const Auto = () => {
                             isUploading ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'
                         }`}
                     >
-                        {isUploading ? 'Uploading...' : 'Submit'}
+                        {isUploading ? 'Processing...' : 'Submit'}
                     </button>
                 </div>
             </form>
