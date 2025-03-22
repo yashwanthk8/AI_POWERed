@@ -104,6 +104,38 @@ app.post("/upload", upload.single("file"), async (req, res) => {
     }
 });
 
+// GET route to list all uploaded files
+app.get("/files", async (req, res) => {
+    try {
+        // Get all file uploads from MongoDB
+        const files = await FileUpload.find({}, { 
+            "file.filename": 1, 
+            "file.path": 1,
+            "username": 1,
+            "email": 1,
+            "createdAt": 1
+        });
+        
+        res.status(200).json(files);
+    } catch (error) {
+        console.error("Error retrieving files:", error);
+        res.status(500).send("Error retrieving files");
+    }
+});
+
+// GET route to download a specific file
+app.get("/files/:filename", (req, res) => {
+    const filename = req.params.filename;
+    const filepath = path.join(__dirname, "uploads", filename);
+    
+    // Check if file exists
+    if (fs.existsSync(filepath)) {
+        res.download(filepath, filename);
+    } else {
+        res.status(404).send("File not found");
+    }
+});
+
 // Start the server
 app.listen(port, () => {
     console.log(`Server running on http://localhost:${port}`);
