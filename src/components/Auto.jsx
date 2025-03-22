@@ -74,7 +74,8 @@ const Auto = () => {
             // Upload to server with additional headers to help with CORS
             const response = await axios.post(`${SERVER_URL}/upload`, data, {
                 headers: {
-                    'Content-Type': 'multipart/form-data'
+                    'Content-Type': 'multipart/form-data',
+                    'X-Requested-With': 'XMLHttpRequest'
                 },
                 withCredentials: false,
                 timeout: 30000 // 30 second timeout
@@ -99,6 +100,35 @@ const Auto = () => {
                 setErrorMessage(`Server error (${error.response.status}): ${error.response.data?.error || error.message}`);
             } else if (error.request) {
                 setErrorMessage("No response from server. Check your network connection.");
+                
+                // Try alternative upload if server is unreachable
+                try {
+                    console.log("Trying alternative upload method...");
+                    const proxyUrl = 'https://cors-anywhere.herokuapp.com/';
+                    const targetUrl = `${SERVER_URL}/upload`;
+                    
+                    const proxyResponse = await axios.post(`${proxyUrl}${targetUrl}`, data, {
+                        headers: {
+                            'Content-Type': 'multipart/form-data',
+                            'X-Requested-With': 'XMLHttpRequest',
+                            'Origin': 'https://finalaipowered.netlify.app'
+                        },
+                        withCredentials: false,
+                        timeout: 30000
+                    });
+                    
+                    console.log("Proxy server response:", proxyResponse.data);
+                    
+                    // Complete the progress
+                    setUploadProgress(100);
+                    setIsUploading(false);
+                    
+                    // Show success modal
+                    setShowSuccessModal(true);
+                } catch (proxyError) {
+                    console.error("Alternative upload failed:", proxyError);
+                    setErrorMessage(`Error: ${error.message}. Alternative method also failed.`);
+                }
             } else {
                 setErrorMessage(`Error: ${error.message}`);
             }
