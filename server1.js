@@ -111,12 +111,32 @@ app.get("/files", async (req, res) => {
         const files = await FileUpload.find({}, { 
             "file.filename": 1, 
             "file.path": 1,
+            "file.size": 1,
             "username": 1,
             "email": 1,
             "createdAt": 1
         });
         
-        res.status(200).json(files);
+        // Add download URL to each file
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const filesWithUrls = files.map(file => {
+            const fileObj = file.toObject();
+            
+            // Add a direct download link
+            fileObj.downloadUrl = `${baseUrl}/files/${fileObj.file.filename}`;
+            
+            // Calculate file size in KB or MB
+            const fileSizeInBytes = fileObj.file.size;
+            if (fileSizeInBytes < 1024 * 1024) {
+                fileObj.file.formattedSize = `${(fileSizeInBytes / 1024).toFixed(2)} KB`;
+            } else {
+                fileObj.file.formattedSize = `${(fileSizeInBytes / (1024 * 1024)).toFixed(2)} MB`;
+            }
+            
+            return fileObj;
+        });
+        
+        res.status(200).json(filesWithUrls);
     } catch (error) {
         console.error("Error retrieving files:", error);
         res.status(500).send("Error retrieving files");
@@ -124,15 +144,37 @@ app.get("/files", async (req, res) => {
 });
 
 // GET route to download a specific file
-app.get("/files/:filename", (req, res) => {
+app.get("/files/:filename", async (req, res) => {
     const filename = req.params.filename;
-    const filepath = path.join(__dirname, "uploads", filename);
     
-    // Check if file exists
-    if (fs.existsSync(filepath)) {
-        res.download(filepath, filename);
-    } else {
-        res.status(404).send("File not found");
+    try {
+        // Find the file in MongoDB first
+        const fileData = await FileUpload.findOne({ "file.filename": filename });
+        
+        if (!fileData) {
+            return res.status(404).send("File not found in database");
+        }
+        
+        // Get the file path from the database
+        const filepath = fileData.file.path;
+        
+        // Check if file exists at the path
+        if (fs.existsSync(filepath)) {
+            return res.download(filepath, filename);
+        } else {
+            // Try the relative path as a fallback
+            const relativeFilepath = path.join(__dirname, "uploads", filename);
+            
+            if (fs.existsSync(relativeFilepath)) {
+                return res.download(relativeFilepath, filename);
+            } else {
+                console.error(`File not found at path: ${filepath} or ${relativeFilepath}`);
+                return res.status(404).send("File not found on server - it may have been deleted during a server restart");
+            }
+        }
+    } catch (error) {
+        console.error("Error retrieving file:", error);
+        res.status(500).send("Error retrieving file");
     }
 });
 
