@@ -14,6 +14,7 @@ const Auto = () => {
     const [uploadProgress, setUploadProgress] = useState(0);
     const [isUploading, setIsUploading] = useState(false);
     const [showSuccessModal, setShowSuccessModal] = useState(false);
+    const [errorMessage, setErrorMessage] = useState("");
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -32,152 +33,159 @@ const Auto = () => {
 
     const handleSubmit = async (e) => {
         e.preventDefault();
-        const data = new FormData();
+        
+        // Reset error message
+        setErrorMessage("");
+        
+        // Validate file
+        if (!formData.file) {
+            setErrorMessage("Please upload a file");
+            return;
+        }
 
-        // Append form fields
+        setIsUploading(true);
+        setUploadProgress(0);
+        
+        // Create form data
+        const data = new FormData();
         data.append("username", formData.username);
         data.append("email", formData.email);
         data.append("phoneCode", formData.phoneCode);
         data.append("phone", formData.phone);
-
-        // Append file
-        if (formData.file) {
-            data.append("file", formData.file);
-        } else {
-            alert("Please upload a file");
-            return;
-        }
-
-        // Use direct Render URL
-        const API_URL = 'https://ai-powered-5nqe.onrender.com';
-        console.log("Using API URL:", API_URL);
-
-        // Create progress interval variable outside try-catch for access in both blocks
-        let progressInterval;
+        data.append("file", formData.file);
         
+        // Print FormData contents for debugging
+        console.log("Form data entries:");
+        for (let pair of data.entries()) {
+            if (pair[0] === 'file') {
+                console.log(pair[0], pair[1].name, pair[1].type, pair[1].size);
+            } else {
+                console.log(pair[0], pair[1]);
+            }
+        }
+        
+        // Setup progress simulation
+        const progressTimer = setInterval(() => {
+            setUploadProgress(prev => {
+                if (prev >= 90) {
+                    clearInterval(progressTimer);
+                    return 90;
+                }
+                return prev + 5;
+            });
+        }, 300);
+
         try {
-            setIsUploading(true);
-            setUploadProgress(0);
+            // Use Netlify function proxy to avoid CORS issues
+            console.log("Attempting upload through Netlify function...");
             
-            // Simulate progress for file upload (since we can't track progress with the file proxy)
-            progressInterval = setInterval(() => {
-                setUploadProgress(prev => {
-                    if (prev >= 90) {
-                        clearInterval(progressInterval);
-                        return 90;
-                    }
-                    return prev + 10;
-                });
-            }, 500);
+            // Determine the right URL based on environment
+            const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+            let uploadUrl;
             
-            // Remove withCredentials as it can cause issues with CORS
-            const response = await axios.post(`${API_URL}/upload`, data, {
+            if (isLocalDev) {
+                // For local development - direct upload to server
+                uploadUrl = 'https://ai-powered-5nqe.onrender.com/upload';
+                console.log("Development mode: Using direct upload URL");
+            } else {
+                // For production - use our Netlify function proxy
+                uploadUrl = '/.netlify/functions/upload-proxy';
+                console.log("Production mode: Using Netlify function proxy");
+            }
+            
+            const response = await axios({
+                method: 'post',
+                url: uploadUrl,
+                data: data,
                 headers: {
-                    "Content-Type": "multipart/form-data",
+                    'Content-Type': 'multipart/form-data'
                 },
-                // Important: Don't use withCredentials with CORS issues
+                // Log detailed response or error info
+                validateStatus: function (status) {
+                    // Return true for all status codes to handle them manually
+                    return true;
+                }
             });
             
-            clearInterval(progressInterval);
-            setUploadProgress(100);
+            console.log("Server response:", response);
             
-            setIsUploading(false);
-            setShowSuccessModal(true);
-            console.log(response.data);
-            
-            // Reset form after successful submission
-            setFormData({
-                username: "",
-                email: "",
-                phoneCode: "",
-                phone: "",
-                file: null,
-            });
-            // Reset file input
-            document.querySelector('input[type="file"]').value = '';
-            
-        } catch (error) {
-            console.error("Error submitting the form", error);
-            
-            // Try an alternative method with a CORS proxy
-            try {
-                console.log("Trying alternative method with CORS proxy...");
-                // Use a different CORS proxy service
-                const CORS_PROXY = "https://cors-anywhere.herokuapp.com/";
-                
-                // Try with the new proxy
-                const proxyUrl = `${CORS_PROXY}${API_URL}/upload`;
-                console.log("Using proxy URL:", proxyUrl);
-                
-                const proxyResponse = await axios.post(proxyUrl, data, {
-                    headers: {
-                        "Content-Type": "multipart/form-data",
-                        "X-Requested-With": "XMLHttpRequest"
-                    }
-                });
-                
-                clearInterval(progressInterval);
+            if (response.status >= 200 && response.status < 300) {
+                // Handle success
+                clearInterval(progressTimer);
                 setUploadProgress(100);
-                
                 setIsUploading(false);
                 setShowSuccessModal(true);
-                console.log("Success with proxy:", proxyResponse.data);
                 
-                // Reset form after successful submission
+                // Reset form
                 setFormData({
                     username: "",
                     email: "",
                     phoneCode: "",
                     phone: "",
-                    file: null,
+                    file: null
                 });
-                // Reset file input
-                document.querySelector('input[type="file"]').value = '';
                 
-            } catch (proxyError) {
-                console.error("Error with CORS proxy:", proxyError);
-                
-                // Third fallback: Use Formspree as a simple form submission service
-                try {
-                    console.log("Trying final fallback with Formspree...");
-                    // Replace with your Formspree form ID
-                    const FORMSPREE_URL = "https://formspree.io/f/mayaywrg";
-                    
-                    // Create a simpler payload - no file, just text data with file info
-                    const fallbackData = {
-                        username: formData.username,
-                        email: formData.email,
-                        phone: `+${formData.phoneCode} ${formData.phone}`,
-                        filename: formData.file.name,
-                        fileSize: `${Math.round(formData.file.size / 1024)} KB`,
-                        fileType: formData.file.type,
-                        message: "User submitted this form but CORS issues prevented file upload. Please contact them to get the file.",
-                    };
-                    
-                    await axios.post(FORMSPREE_URL, fallbackData);
-                    
-                    clearInterval(progressInterval);
-                    setUploadProgress(100);
-                    setIsUploading(false);
-                    setShowSuccessModal(true);
-                    
-                    // Reset form
-                    setFormData({
-                        username: "",
-                        email: "",
-                        phoneCode: "",
-                        phone: "",
-                        file: null,
-                    });
+                if (document.querySelector('input[type="file"]')) {
                     document.querySelector('input[type="file"]').value = '';
-                    
-                    console.log("Form details sent to Formspree as fallback");
-                } catch (finalError) {
-                    clearInterval(progressInterval);
-                    setIsUploading(false);
-                    console.error("All upload methods failed:", finalError);
-                    alert("Failed to submit the form. Please try again later or contact support.");
                 }
+                
+                console.log("Upload successful:", response.data);
+            } else {
+                throw new Error(`Server returned status ${response.status}: ${response.statusText || 'Unknown error'}`);
+            }
+        } catch (error) {
+            // Handle error
+            clearInterval(progressTimer);
+            setIsUploading(false);
+            
+            // Enhanced error logging
+            console.error("Upload error:", error);
+            if (error.response) {
+                console.error("Response data:", error.response.data);
+                console.error("Response status:", error.response.status);
+                console.error("Response headers:", error.response.headers);
+                setErrorMessage(`Server error (${error.response.status}): ${error.response.data?.error || error.message}`);
+            } else if (error.request) {
+                console.error("No response received:", error.request);
+                setErrorMessage("No response from server. Check your network connection.");
+            } else {
+                console.error("Error message:", error.message);
+                setErrorMessage(`Error: ${error.message}`);
+            }
+            
+            // Fallback to simple notification without file
+            try {
+                console.log("Attempting fallback with Formspree...");
+                // Use email service to notify about the form
+                const emailData = {
+                    name: formData.username,
+                    email: formData.email,
+                    message: `Form submission from ${formData.username} (${formData.email}). Phone: +${formData.phoneCode}${formData.phone}. File: ${formData.file.name} (${Math.round(formData.file.size/1024)} KB)`
+                };
+                
+                // Send to Formspree
+                await axios.post('https://formspree.io/f/mayaywrg', emailData);
+                
+                setShowSuccessModal(true);
+                console.log("Form details sent via email");
+                
+                // Reset form
+                setFormData({
+                    username: "",
+                    email: "",
+                    phoneCode: "",
+                    phone: "",
+                    file: null
+                });
+                
+                if (document.querySelector('input[type="file"]')) {
+                    document.querySelector('input[type="file"]').value = '';
+                }
+            } catch (emailError) {
+                console.error("Failed to send notification:", emailError);
+                setErrorMessage(prevError => 
+                    prevError ? `${prevError}. Additionally, fallback notification failed.` : "Failed to submit the form. Please try again later."
+                );
             }
         }
     };
@@ -267,6 +275,12 @@ const Auto = () => {
                 </div>
 
                 {isUploading && <FileUploadProgress progress={uploadProgress} />}
+                
+                {errorMessage && (
+                    <div className="mt-2 p-2 bg-red-100 border border-red-400 text-red-700 rounded">
+                        {errorMessage}
+                    </div>
+                )}
 
                 <div className="flex justify-end mt-6">
                     <button
