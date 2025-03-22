@@ -15,7 +15,9 @@ const Auto = () => {
     const [isUploading, setIsUploading] = useState(false);
     const [showSuccessModal, setShowSuccessModal] = useState(false);
     const [errorMessage, setErrorMessage] = useState("");
-    const [downloadLink, setDownloadLink] = useState(null);
+    const [downloadUrl, setDownloadUrl] = useState("");
+
+    const SERVER_URL = "https://ai-powered-5nqe.onrender.com";
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -37,7 +39,7 @@ const Auto = () => {
         
         // Reset error message and download link
         setErrorMessage("");
-        setDownloadLink(null);
+        setDownloadUrl("");
         
         // Validate file
         if (!formData.file) {
@@ -56,44 +58,55 @@ const Auto = () => {
         data.append("phone", formData.phone);
         data.append("file", formData.file);
         
-        // Simple animation for quick uploads
+        // Progress simulation
         const progressTimer = setInterval(() => {
             setUploadProgress(prev => {
                 if (prev >= 90) {
                     clearInterval(progressTimer);
                     return 90;
                 }
-                return prev + 15; // Faster progress
+                return prev + 10;
             });
-        }, 150); // Shorter interval
+        }, 500);
 
         try {
-            console.log("Processing file...");
+            console.log("Uploading file to server...");
             
-            // Create a temporary download link for the file without sending to server
-            const fileURL = URL.createObjectURL(formData.file);
-            setDownloadLink({
-                url: fileURL,
-                filename: formData.file.name
+            // Upload to server
+            const response = await axios.post(`${SERVER_URL}/upload`, data, {
+                headers: {
+                    'Content-Type': 'multipart/form-data'
+                }
             });
+            
+            console.log("Server response:", response.data);
             
             // Complete the progress
             clearInterval(progressTimer);
             setUploadProgress(100);
+            setIsUploading(false);
             
-            // Show success message after a short delay
-            setTimeout(() => {
-                setIsUploading(false);
-                setShowSuccessModal(true);
-                
-                // Don't reset the form so user can download the file
-            }, 500);
+            // Set the download URL from the server response
+            if (response.data && response.data.file && response.data.file.filename) {
+                const fileDownloadUrl = `${SERVER_URL}/files/${response.data.file.filename}`;
+                setDownloadUrl(fileDownloadUrl);
+                console.log("File download URL:", fileDownloadUrl);
+            }
+            
+            setShowSuccessModal(true);
             
         } catch (error) {
             clearInterval(progressTimer);
             setIsUploading(false);
-            setErrorMessage("Error processing file: " + error.message);
-            console.error("Error:", error);
+            console.error("Upload error:", error);
+            
+            if (error.response) {
+                setErrorMessage(`Server error (${error.response.status}): ${error.response.data?.error || error.message}`);
+            } else if (error.request) {
+                setErrorMessage("No response from server. Check your network connection.");
+            } else {
+                setErrorMessage(`Error: ${error.message}`);
+            }
         }
     };
 
@@ -111,12 +124,6 @@ const Auto = () => {
         
         if (document.querySelector('input[type="file"]')) {
             document.querySelector('input[type="file"]').value = '';
-        }
-        
-        // Release the object URL to free memory
-        if (downloadLink) {
-            URL.revokeObjectURL(downloadLink.url);
-            setDownloadLink(null);
         }
     };
 
@@ -208,18 +215,19 @@ const Auto = () => {
                     </div>
                 )}
                 
-                {downloadLink && (
+                {downloadUrl && (
                     <div className="mt-3 mb-2 p-3 bg-green-50 border border-green-400 text-green-700 rounded flex flex-col">
-                        <p className="mb-2">File processed successfully!</p>
+                        <p className="mb-2">File uploaded successfully!</p>
                         <a 
-                            href={downloadLink.url} 
-                            download={downloadLink.filename}
+                            href={downloadUrl} 
+                            target="_blank"
+                            rel="noopener noreferrer"
                             className="flex items-center justify-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition"
                         >
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
                                 <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
                             </svg>
-                            Download {downloadLink.filename}
+                            Download File
                         </a>
                     </div>
                 )}
@@ -232,7 +240,7 @@ const Auto = () => {
                             isUploading ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'
                         }`}
                     >
-                        {isUploading ? 'Processing...' : 'Submit'}
+                        {isUploading ? 'Uploading...' : 'Submit'}
                     </button>
                 </div>
             </form>
