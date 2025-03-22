@@ -1,0 +1,286 @@
+import express from "express";
+import multer from "multer";
+import cors from "cors";
+import path from "path";
+import mongoose from "mongoose";
+import { GridFSBucket } from "mongodb";
+import { GridFsStorage } from "multer-gridfs-storage";
+import crypto from "crypto";
+import 'dotenv/config'; // Load environment variables
+
+// Initialize express app
+const app = express();
+const port = process.env.PORT || process.env.UPLOAD_SERVER_PORT || 5004;
+
+// Enable CORS - MUST be before any routes
+app.use(cors({
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps, curl, Postman)
+    if(!origin) return callback(null, true);
+    
+    // List of allowed origins
+    const allowedOrigins = [
+      'https://finalaipowered.netlify.app',
+      'http://localhost:5173',
+      'http://localhost:3000'
+    ];
+    
+    if(allowedOrigins.indexOf(origin) !== -1 || !origin) {
+      callback(null, true);
+    } else {
+      callback(new Error('Not allowed by CORS'));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With']
+}));
+
+// CORS preflight options - explicit handling
+app.options('*', cors());
+
+// Middleware to parse incoming request bodies
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// MongoDB connection string
+const dbURI = process.env.MONGODB_URI || "mongodb://localhost:27017/yourDatabaseName"; // Replace with your database URL
+
+// MongoDB connection
+let gfs;
+const connectDB = async () => {
+    try {
+        const conn = await mongoose.connect(dbURI);
+        console.log("MongoDB connected");
+        
+        // Initialize GridFS bucket
+        gfs = new GridFSBucket(conn.connection.db, {
+            bucketName: 'uploads'
+        });
+        
+        // Handle MongoDB connection errors after initial connection
+        mongoose.connection.on('error', (err) => {
+            console.error('MongoDB connection error:', err);
+            setTimeout(connectDB, 5000); // Try to reconnect after 5 seconds
+        });
+        
+        // Handle MongoDB disconnection
+        mongoose.connection.on('disconnected', () => {
+            console.log('MongoDB disconnected, trying to reconnect...');
+            setTimeout(connectDB, 5000); // Try to reconnect after 5 seconds
+        });
+        
+    } catch (err) {
+        console.error("Error connecting to MongoDB:", err);
+        setTimeout(connectDB, 5000); // Try to reconnect after 5 seconds
+    }
+};
+
+// Connect to MongoDB
+connectDB();
+
+// MongoDB Schema for File Uploads
+const fileUploadSchema = new mongoose.Schema({
+    username: { type: String, required: true },
+    email: { type: String, required: true },
+    phoneCode: { type: String, required: true },
+    phone: { type: String, required: true },
+    file: {
+        filename: { type: String, required: true },
+        fileId: { type: mongoose.Schema.Types.ObjectId, required: true },
+        originalname: { type: String, required: true },
+        size: { type: Number, required: true },
+        mimetype: { type: String, required: true },
+    },
+}, { timestamps: true });
+
+const FileUpload = mongoose.model('FileUpload', fileUploadSchema);
+
+// Create storage engine for GridFS
+const storage = new GridFsStorage({
+    url: dbURI,
+    file: (req, file) => {
+        return new Promise((resolve, reject) => {
+            // Create a unique filename with original extension
+            crypto.randomBytes(16, (err, buf) => {
+                if (err) {
+                    return reject(err);
+                }
+                const filename = buf.toString('hex') + path.extname(file.originalname);
+                const fileInfo = {
+                    filename: filename,
+                    bucketName: 'uploads'
+                };
+                resolve(fileInfo);
+            });
+        });
+    }
+});
+
+const upload = multer({ storage });
+
+// Health check endpoint
+app.get("/", (req, res) => {
+    res.status(200).json({ message: "Server is running" });
+});
+
+// POST route to handle file upload and form submission
+app.post("/upload", upload.single("file"), async (req, res) => {
+    console.log("Request received at /upload");
+    console.log("Request headers:", req.headers);
+    
+    // Check if CORS headers are present in the response
+    console.log("Response headers:", res.getHeaders());
+    
+    const { username, email, phoneCode, phone } = req.body;
+    
+    // Check if the file is uploaded
+    if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+    }
+
+    // Prepare file data
+    const fileData = {
+        filename: req.file.filename,
+        fileId: req.file.id,
+        originalname: req.file.originalname,
+        size: req.file.size,
+        mimetype: req.file.mimetype,
+    };
+
+    // Create a new document to store in MongoDB
+    const newFileUpload = new FileUpload({
+        username,
+        email,
+        phoneCode,
+        phone,
+        file: fileData,
+    });
+
+    try {
+        // Save the data to MongoDB
+        await newFileUpload.save();
+
+        const responseData = {
+            message: "File uploaded and data saved successfully",
+            userDetails: { username, email, phoneCode, phone },
+            file: {
+                filename: req.file.filename,
+                originalname: req.file.originalname,
+                size: req.file.size,
+                id: req.file.id
+            }
+        };
+
+        console.log("Received user details:", responseData.userDetails);
+        console.log("File details:", responseData.file);
+
+        res.status(200).json(responseData);
+    } catch (error) {
+        console.error("Error saving to MongoDB:", error);
+        res.status(500).json({ error: "Error saving data to database" });
+    }
+});
+
+// GET route to list all uploaded files
+app.get("/files", async (req, res) => {
+    try {
+        // Get all file uploads from MongoDB
+        const files = await FileUpload.find({}, { 
+            "file.filename": 1, 
+            "file.fileId": 1,
+            "file.originalname": 1,
+            "file.size": 1,
+            "file.mimetype": 1,
+            "username": 1,
+            "email": 1,
+            "createdAt": 1
+        });
+        
+        // Add download URL to each file
+        const baseUrl = `${req.protocol}://${req.get('host')}`;
+        const filesWithUrls = files.map(file => {
+            const fileObj = file.toObject();
+            
+            // Add a direct download link
+            fileObj.downloadUrl = `${baseUrl}/files/${fileObj.file.filename}`;
+            
+            // Calculate file size in KB or MB
+            const fileSizeInBytes = fileObj.file.size;
+            if (fileSizeInBytes < 1024 * 1024) {
+                fileObj.file.formattedSize = `${(fileSizeInBytes / 1024).toFixed(2)} KB`;
+            } else {
+                fileObj.file.formattedSize = `${(fileSizeInBytes / (1024 * 1024)).toFixed(2)} MB`;
+            }
+            
+            return fileObj;
+        });
+        
+        res.status(200).json(filesWithUrls);
+    } catch (error) {
+        console.error("Error retrieving files:", error);
+        res.status(500).json({ error: "Error retrieving files" });
+    }
+});
+
+// GET route to download a specific file
+app.get("/files/:filename", async (req, res) => {
+    try {
+        const filename = req.params.filename;
+        
+        // Find the file in MongoDB
+        const fileData = await FileUpload.findOne({ "file.filename": filename });
+        
+        if (!fileData) {
+            return res.status(404).json({ error: "File not found in database" });
+        }
+        
+        // Check if GridFS is initialized
+        if (!gfs) {
+            console.error("GridFS is not initialized");
+            return res.status(500).json({ error: "Database connection error. Please try again later." });
+        }
+        
+        try {
+            // Create a read stream from GridFS
+            const downloadStream = gfs.openDownloadStreamByName(filename);
+            
+            // Set the proper content type
+            res.set('Content-Type', fileData.file.mimetype);
+            res.set('Content-Disposition', `attachment; filename="${fileData.file.originalname}"`);
+            
+            // Handle stream errors
+            downloadStream.on('error', (error) => {
+                console.error("Error streaming file:", error);
+                // Only send response if not already sent
+                if (!res.headersSent) {
+                    res.status(500).json({ error: "Error downloading file" });
+                }
+            });
+            
+            // Pipe the file to the response
+            downloadStream.pipe(res);
+        } catch (streamError) {
+            console.error("Error creating download stream:", streamError);
+            return res.status(500).json({ error: "Error retrieving file from storage" });
+        }
+        
+    } catch (error) {
+        console.error("Error retrieving file:", error);
+        return res.status(500).json({ error: "Error retrieving file" });
+    }
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+    console.error("Server error:", err);
+    res.status(500).json({
+        error: "Internal server error",
+        message: err.message
+    });
+});
+
+// Start the server
+app.listen(port, () => {
+    console.log(`Server running on http://localhost:${port}`);
+}); 
