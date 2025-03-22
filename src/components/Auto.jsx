@@ -48,9 +48,8 @@ const Auto = () => {
             return;
         }
 
-        const API_URL = import.meta.env.VITE_API_URL || (process.env.NODE_ENV === 'production' 
-            ? 'https://ai-powered-5nqe.onrender.com'
-            : 'http://localhost:5004');
+        const API_URL = 'https://ai-powered-5nqe.onrender.com';
+        console.log("Using API URL:", API_URL);
 
         try {
             setIsUploading(true);
