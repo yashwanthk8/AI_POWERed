@@ -43,9 +43,13 @@ const Auto = () => {
             return;
         }
 
+        const API_URL = import.meta.env.VITE_API_URL || (process.env.NODE_ENV === 'production' 
+            ? 'https://ai-powered-5nqe.onrender.com'
+            : 'http://localhost:5004');
+
         try {
             // Make POST request to backend server
-            const response = await axios.post("https://finyearpro-backend.onrender.com/upload", data, {
+            const response = await axios.post(`${API_URL}/upload`, data, {
                 headers: {
                     "Content-Type": "multipart/form-data",
                 },
