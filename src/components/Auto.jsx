@@ -75,119 +75,121 @@ const Auto = () => {
             });
         }, 300);
 
-        try {
-            // Use Netlify function proxy to avoid CORS issues
-            console.log("Attempting upload through Netlify function...");
-            
-            // Determine the right URL based on environment
-            const isLocalDev = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-            let uploadUrl;
-            
-            if (isLocalDev) {
-                // For local development - direct upload to server
-                uploadUrl = 'https://ai-powered-5nqe.onrender.com/upload';
-                console.log("Development mode: Using direct upload URL");
-            } else {
-                // For production - use our Netlify function proxy
-                uploadUrl = '/.netlify/functions/upload-proxy';
-                console.log("Production mode: Using Netlify function proxy");
-            }
-            
-            const response = await axios({
-                method: 'post',
-                url: uploadUrl,
-                data: data,
-                headers: {
-                    'Content-Type': 'multipart/form-data'
-                },
-                // Log detailed response or error info
-                validateStatus: function (status) {
-                    // Return true for all status codes to handle them manually
-                    return true;
-                }
-            });
-            
-            console.log("Server response:", response);
-            
-            if (response.status >= 200 && response.status < 300) {
-                // Handle success
-                clearInterval(progressTimer);
-                setUploadProgress(100);
-                setIsUploading(false);
-                setShowSuccessModal(true);
-                
-                // Reset form
-                setFormData({
-                    username: "",
-                    email: "",
-                    phoneCode: "",
-                    phone: "",
-                    file: null
+        // Try all upload methods in sequence for reliability
+        let uploadSuccess = false;
+
+        // Method 1: Direct server upload
+        if (!uploadSuccess) {
+            try {
+                console.log("Attempting direct upload to server...");
+                const directResponse = await axios({
+                    method: 'post',
+                    url: 'https://ai-powered-5nqe.onrender.com/upload',
+                    data: data,
+                    headers: {
+                        'Content-Type': 'multipart/form-data'
+                    },
+                    validateStatus: function (status) {
+                        return true;
+                    },
+                    timeout: 15000 // 15 second timeout
                 });
                 
-                if (document.querySelector('input[type="file"]')) {
-                    document.querySelector('input[type="file"]').value = '';
-                }
+                console.log("Direct server response:", directResponse);
                 
-                console.log("Upload successful:", response.data);
-            } else {
-                throw new Error(`Server returned status ${response.status}: ${response.statusText || 'Unknown error'}`);
+                if (directResponse.status >= 200 && directResponse.status < 300) {
+                    uploadSuccess = true;
+                    handleUploadSuccess(progressTimer);
+                    return;
+                } else {
+                    console.error("Direct upload failed with status:", directResponse.status);
+                }
+            } catch (error) {
+                console.error("Direct upload error:", error.message);
             }
-        } catch (error) {
-            // Handle error
-            clearInterval(progressTimer);
-            setIsUploading(false);
-            
-            // Enhanced error logging
-            console.error("Upload error:", error);
-            if (error.response) {
-                console.error("Response data:", error.response.data);
-                console.error("Response status:", error.response.status);
-                console.error("Response headers:", error.response.headers);
-                setErrorMessage(`Server error (${error.response.status}): ${error.response.data?.error || error.message}`);
-            } else if (error.request) {
-                console.error("No response received:", error.request);
-                setErrorMessage("No response from server. Check your network connection.");
-            } else {
-                console.error("Error message:", error.message);
-                setErrorMessage(`Error: ${error.message}`);
+        }
+
+        // Method 2: Netlify function proxy
+        if (!uploadSuccess) {
+            try {
+                console.log("Attempting upload through Netlify function...");
+                const proxyResponse = await axios({
+                    method: 'post',
+                    url: '/.netlify/functions/upload-proxy',
+                    data: data,
+                    headers: {
+                        'Content-Type': 'multipart/form-data'
+                    },
+                    validateStatus: function (status) {
+                        return true;
+                    },
+                    timeout: 15000 // 15 second timeout
+                });
+                
+                console.log("Netlify proxy response:", proxyResponse);
+                
+                if (proxyResponse.status >= 200 && proxyResponse.status < 300) {
+                    uploadSuccess = true;
+                    handleUploadSuccess(progressTimer);
+                    return;
+                } else {
+                    console.error("Netlify proxy upload failed with status:", proxyResponse.status);
+                }
+            } catch (error) {
+                console.error("Netlify proxy error:", error.message);
             }
-            
-            // Fallback to simple notification without file
+        }
+
+        // Method 3: Formspree fallback
+        if (!uploadSuccess) {
             try {
                 console.log("Attempting fallback with Formspree...");
-                // Use email service to notify about the form
                 const emailData = {
                     name: formData.username,
                     email: formData.email,
-                    message: `Form submission from ${formData.username} (${formData.email}). Phone: +${formData.phoneCode}${formData.phone}. File: ${formData.file.name} (${Math.round(formData.file.size/1024)} KB)`
+                    message: `Form submission from ${formData.username} (${formData.email}). Phone: +${formData.phoneCode}${formData.phone}. File: ${formData.file.name} (${Math.round(formData.file.size/1024)} KB)`,
+                    _subject: "Form Submission from FinYearPro"
                 };
                 
-                // Send to Formspree
-                await axios.post('https://formspree.io/f/mayaywrg', emailData);
+                const formspreeResponse = await axios.post('https://formspree.io/f/xknooqlb', emailData);
                 
-                setShowSuccessModal(true);
-                console.log("Form details sent via email");
-                
-                // Reset form
-                setFormData({
-                    username: "",
-                    email: "",
-                    phoneCode: "",
-                    phone: "",
-                    file: null
-                });
-                
-                if (document.querySelector('input[type="file"]')) {
-                    document.querySelector('input[type="file"]').value = '';
+                if (formspreeResponse.status >= 200 && formspreeResponse.status < 300) {
+                    uploadSuccess = true;
+                    handleUploadSuccess(progressTimer);
+                    return;
                 }
             } catch (emailError) {
-                console.error("Failed to send notification:", emailError);
-                setErrorMessage(prevError => 
-                    prevError ? `${prevError}. Additionally, fallback notification failed.` : "Failed to submit the form. Please try again later."
-                );
+                console.error("Failed to send notification:", emailError.message);
             }
         }
+
+        // If all methods failed
+        clearInterval(progressTimer);
+        setIsUploading(false);
+        setErrorMessage("Unable to submit the form through any method. Please try again later or contact support.");
+    };
+
+    // Helper function for successful uploads
+    const handleUploadSuccess = (progressTimer) => {
+        clearInterval(progressTimer);
+        setUploadProgress(100);
+        setIsUploading(false);
+        setShowSuccessModal(true);
+        
+        // Reset form
+        setFormData({
+            username: "",
+            email: "",
+            phoneCode: "",
+            phone: "",
+            file: null
+        });
+        
+        if (document.querySelector('input[type="file"]')) {
+            document.querySelector('input[type="file"]').value = '';
+        }
+        
+        console.log("Upload successful!");
     };
 
     const closeSuccessModal = () => {

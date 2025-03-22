@@ -1,6 +1,4 @@
 const axios = require('axios');
-const FormData = require('form-data');
-const busboy = require('busboy');
 
 // Target server URL
 const UPLOAD_SERVER_URL = 'https://ai-powered-5nqe.onrender.com/upload';
@@ -14,76 +12,28 @@ exports.handler = async function(event, context) {
     };
   }
 
-  // Parse multipart form data
-  const parseMultipartForm = (event) => {
-    return new Promise((resolve, reject) => {
-      // Create FormData object to collect the parsed data
-      const formData = new FormData();
-      const fields = {};
-      let fileBuffer = null;
-      let fileName = '';
-      let fileType = '';
-      
-      // Initialize busboy
-      const bb = busboy({ headers: event.headers });
-      
-      // Handle file data
-      bb.on('file', (name, file, info) => {
-        const { filename, encoding, mimeType } = info;
-        fileName = filename;
-        fileType = mimeType;
-        
-        const chunks = [];
-        file.on('data', (data) => {
-          chunks.push(data);
-        });
-        
-        file.on('end', () => {
-          fileBuffer = Buffer.concat(chunks);
-        });
-      });
-      
-      // Handle text fields
-      bb.on('field', (name, val) => {
-        fields[name] = val;
-        formData.append(name, val);
-      });
-      
-      // Final event
-      bb.on('close', () => {
-        if (fileBuffer) {
-          formData.append('file', fileBuffer, {
-            filename: fileName,
-            contentType: fileType
-          });
-        }
-        
-        resolve({ formData, fields });
-      });
-      
-      // Parse the event body
-      bb.write(Buffer.from(event.body, 'base64'));
-      bb.end();
-    });
-  };
-  
   try {
     console.log('Received upload request');
     
-    // Parse the multipart form data
-    const { formData, fields } = await parseMultipartForm(event);
-    
-    console.log('Form fields:', fields);
-    console.log('File received, forwarding to server');
-    
-    // Forward the request to the actual server
-    const response = await axios.post(UPLOAD_SERVER_URL, formData, {
+    // Instead of trying to parse the multipart form, simply forward the request
+    // This is a simpler approach that lets the backend handle the parsing
+    const response = await axios({
+      method: 'post',
+      url: UPLOAD_SERVER_URL,
+      // Just pass through the headers and body as-is
       headers: {
-        ...formData.getHeaders()
-      }
+        ...event.headers,
+        // These headers might need to be adjusted
+        'origin': 'https://finalaipowered.netlify.app',
+        'host': 'ai-powered-5nqe.onrender.com'
+      },
+      // The body is already the raw form data
+      data: Buffer.from(event.body, 'base64'),
+      // Don't transform the data
+      transformRequest: [(data) => data],
     });
     
-    console.log('Server response:', response.status);
+    console.log('Server response status:', response.status);
     
     // Return the server's response
     return {
@@ -91,7 +41,7 @@ exports.handler = async function(event, context) {
       body: JSON.stringify(response.data)
     };
   } catch (error) {
-    console.error('Error in serverless function:', error);
+    console.error('Error in serverless function:', error.message);
     
     // Return appropriate error response
     return {
