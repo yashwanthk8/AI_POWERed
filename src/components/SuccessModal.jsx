@@ -37,6 +37,7 @@ const SuccessModal = ({ isOpen, onClose }) => {
           </div>
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Success!</h2>
           <p className="text-gray-600 mb-6 text-center">Your form has been submitted successfully.</p>
+          <p className="text-gray-500 mb-6 text-sm text-center">Your file has been uploaded and stored for admin review.</p>
           <button
             onClick={onClose}
             className="px-6 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-opacity-50 transition-all"

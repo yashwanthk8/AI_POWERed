@@ -15,7 +15,6 @@ const Auto = () => {
     const [isUploading, setIsUploading] = useState(false);
     const [showSuccessModal, setShowSuccessModal] = useState(false);
     const [errorMessage, setErrorMessage] = useState("");
-    const [downloadUrl, setDownloadUrl] = useState("");
 
     // Setting up the server URL
     const SERVER_URL = "https://ai-powered-5nqe.onrender.com";
@@ -40,7 +39,6 @@ const Auto = () => {
         
         // Reset states
         setErrorMessage("");
-        setDownloadUrl("");
         
         // Validate file
         if (!formData.file) {
@@ -89,13 +87,7 @@ const Auto = () => {
             setUploadProgress(100);
             setIsUploading(false);
             
-            // Set the download URL from the server response
-            if (response.data && response.data.file && response.data.file.filename) {
-                const fileDownloadUrl = `${SERVER_URL}/files/${response.data.file.filename}`;
-                setDownloadUrl(fileDownloadUrl);
-                console.log("File download URL:", fileDownloadUrl);
-            }
-            
+            // Show success modal
             setShowSuccessModal(true);
             
         } catch (error) {
@@ -218,23 +210,6 @@ const Auto = () => {
                     </div>
                 )}
                 
-                {downloadUrl && (
-                    <div className="mt-3 mb-2 p-3 bg-green-50 border border-green-400 text-green-700 rounded flex flex-col">
-                        <p className="mb-2">File uploaded successfully to server!</p>
-                        <a 
-                            href={downloadUrl} 
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center justify-center px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition"
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-2" viewBox="0 0 20 20" fill="currentColor">
-                                <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zm3.293-7.707a1 1 0 011.414 0L9 10.586V3a1 1 0 112 0v7.586l1.293-1.293a1 1 0 111.414 1.414l-3 3a1 1 0 01-1.414 0l-3-3a1 1 0 010-1.414z" clipRule="evenodd" />
-                            </svg>
-                            Download File
-                        </a>
-                    </div>
-                )}
-
                 <div className="flex justify-end mt-6">
                     <button
                         type="submit"
