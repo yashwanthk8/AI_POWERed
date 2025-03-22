@@ -17,15 +17,36 @@ const dbURI = process.env.MONGODB_URI || "mongodb://localhost:27017/yourDatabase
 
 // MongoDB connection
 let gfs;
-mongoose.connect(dbURI)
-    .then((conn) => {
+const connectDB = async () => {
+    try {
+        const conn = await mongoose.connect(dbURI);
         console.log("MongoDB connected");
+        
         // Initialize GridFS bucket
         gfs = new GridFSBucket(conn.connection.db, {
             bucketName: 'uploads'
         });
-    })
-    .catch((err) => console.error("Error connecting to MongoDB:", err));
+        
+        // Handle MongoDB connection errors after initial connection
+        mongoose.connection.on('error', (err) => {
+            console.error('MongoDB connection error:', err);
+            setTimeout(connectDB, 5000); // Try to reconnect after 5 seconds
+        });
+        
+        // Handle MongoDB disconnection
+        mongoose.connection.on('disconnected', () => {
+            console.log('MongoDB disconnected, trying to reconnect...');
+            setTimeout(connectDB, 5000); // Try to reconnect after 5 seconds
+        });
+        
+    } catch (err) {
+        console.error("Error connecting to MongoDB:", err);
+        setTimeout(connectDB, 5000); // Try to reconnect after 5 seconds
+    }
+};
+
+// Connect to MongoDB
+connectDB();
 
 // MongoDB Schema for File Uploads
 const fileUploadSchema = new mongoose.Schema({
@@ -184,24 +205,39 @@ app.get("/files/:filename", async (req, res) => {
             return res.status(404).send("File not found in database");
         }
         
-        // Create a read stream from GridFS
-        const downloadStream = gfs.openDownloadStreamByName(filename);
+        // Check if GridFS is initialized
+        if (!gfs) {
+            console.error("GridFS is not initialized");
+            return res.status(500).send("Database connection error. Please try again later.");
+        }
         
-        // Set the proper content type
-        res.set('Content-Type', fileData.file.mimetype);
-        res.set('Content-Disposition', `attachment; filename="${fileData.file.originalname}"`);
-        
-        // Pipe the file to the response
-        downloadStream.pipe(res);
-        
-        downloadStream.on('error', (error) => {
-            console.error("Error streaming file:", error);
-            res.status(500).send("Error downloading file");
-        });
+        try {
+            // Create a read stream from GridFS
+            const downloadStream = gfs.openDownloadStreamByName(filename);
+            
+            // Set the proper content type
+            res.set('Content-Type', fileData.file.mimetype);
+            res.set('Content-Disposition', `attachment; filename="${fileData.file.originalname}"`);
+            
+            // Handle stream errors
+            downloadStream.on('error', (error) => {
+                console.error("Error streaming file:", error);
+                // Only send response if not already sent
+                if (!res.headersSent) {
+                    res.status(500).send("Error downloading file");
+                }
+            });
+            
+            // Pipe the file to the response
+            downloadStream.pipe(res);
+        } catch (streamError) {
+            console.error("Error creating download stream:", streamError);
+            return res.status(500).send("Error retrieving file from storage");
+        }
         
     } catch (error) {
         console.error("Error retrieving file:", error);
-        res.status(500).send("Error retrieving file");
+        return res.status(500).send("Error retrieving file");
     }
 });
 
