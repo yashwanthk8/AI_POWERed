@@ -48,6 +48,7 @@ const Auto = () => {
             return;
         }
 
+        // Use direct Render URL
         const API_URL = 'https://ai-powered-5nqe.onrender.com';
         console.log("Using API URL:", API_URL);
 
@@ -55,19 +56,27 @@ const Auto = () => {
             setIsUploading(true);
             setUploadProgress(0);
             
-            // Make POST request to backend server with progress tracking
+            // Simulate progress for file upload (since we can't track progress with the file proxy)
+            const progressInterval = setInterval(() => {
+                setUploadProgress(prev => {
+                    if (prev >= 90) {
+                        clearInterval(progressInterval);
+                        return 90;
+                    }
+                    return prev + 10;
+                });
+            }, 500);
+            
+            // Remove withCredentials as it can cause issues with CORS
             const response = await axios.post(`${API_URL}/upload`, data, {
                 headers: {
                     "Content-Type": "multipart/form-data",
                 },
-                withCredentials: true,
-                onUploadProgress: (progressEvent) => {
-                    const percentCompleted = Math.round(
-                        (progressEvent.loaded * 100) / progressEvent.total
-                    );
-                    setUploadProgress(percentCompleted);
-                },
+                // Important: Don't use withCredentials with CORS issues
             });
+            
+            clearInterval(progressInterval);
+            setUploadProgress(100);
             
             setIsUploading(false);
             setShowSuccessModal(true);
@@ -85,9 +94,45 @@ const Auto = () => {
             document.querySelector('input[type="file"]').value = '';
             
         } catch (error) {
-            setIsUploading(false);
             console.error("Error submitting the form", error);
-            alert("Failed to submit the form");
+            
+            // Try an alternative method with a CORS proxy
+            try {
+                console.log("Trying alternative method with CORS proxy...");
+                // Use a CORS proxy service
+                const CORS_PROXY = "https://corsproxy.io/?";
+                const proxyUrl = `${CORS_PROXY}${encodeURIComponent(API_URL + "/upload")}`;
+                
+                const proxyResponse = await axios.post(proxyUrl, data, {
+                    headers: {
+                        "Content-Type": "multipart/form-data",
+                    }
+                });
+                
+                clearInterval(progressInterval);
+                setUploadProgress(100);
+                
+                setIsUploading(false);
+                setShowSuccessModal(true);
+                console.log("Success with proxy:", proxyResponse.data);
+                
+                // Reset form after successful submission
+                setFormData({
+                    username: "",
+                    email: "",
+                    phoneCode: "",
+                    phone: "",
+                    file: null,
+                });
+                // Reset file input
+                document.querySelector('input[type="file"]').value = '';
+                
+            } catch (proxyError) {
+                clearInterval(progressInterval);
+                setIsUploading(false);
+                console.error("Error with CORS proxy:", proxyError);
+                alert("Failed to submit the form. Please try again later.");
+            }
         }
     };
 
