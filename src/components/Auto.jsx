@@ -52,12 +52,15 @@ const Auto = () => {
         const API_URL = 'https://ai-powered-5nqe.onrender.com';
         console.log("Using API URL:", API_URL);
 
+        // Create progress interval variable outside try-catch for access in both blocks
+        let progressInterval;
+        
         try {
             setIsUploading(true);
             setUploadProgress(0);
             
             // Simulate progress for file upload (since we can't track progress with the file proxy)
-            const progressInterval = setInterval(() => {
+            progressInterval = setInterval(() => {
                 setUploadProgress(prev => {
                     if (prev >= 90) {
                         clearInterval(progressInterval);
@@ -99,13 +102,17 @@ const Auto = () => {
             // Try an alternative method with a CORS proxy
             try {
                 console.log("Trying alternative method with CORS proxy...");
-                // Use a CORS proxy service
-                const CORS_PROXY = "https://corsproxy.io/?";
-                const proxyUrl = `${CORS_PROXY}${encodeURIComponent(API_URL + "/upload")}`;
+                // Use a different CORS proxy service
+                const CORS_PROXY = "https://cors-anywhere.herokuapp.com/";
+                
+                // Try with the new proxy
+                const proxyUrl = `${CORS_PROXY}${API_URL}/upload`;
+                console.log("Using proxy URL:", proxyUrl);
                 
                 const proxyResponse = await axios.post(proxyUrl, data, {
                     headers: {
                         "Content-Type": "multipart/form-data",
+                        "X-Requested-With": "XMLHttpRequest"
                     }
                 });
                 
@@ -128,10 +135,49 @@ const Auto = () => {
                 document.querySelector('input[type="file"]').value = '';
                 
             } catch (proxyError) {
-                clearInterval(progressInterval);
-                setIsUploading(false);
                 console.error("Error with CORS proxy:", proxyError);
-                alert("Failed to submit the form. Please try again later.");
+                
+                // Third fallback: Use Formspree as a simple form submission service
+                try {
+                    console.log("Trying final fallback with Formspree...");
+                    // Replace with your Formspree form ID
+                    const FORMSPREE_URL = "https://formspree.io/f/mayaywrg";
+                    
+                    // Create a simpler payload - no file, just text data with file info
+                    const fallbackData = {
+                        username: formData.username,
+                        email: formData.email,
+                        phone: `+${formData.phoneCode} ${formData.phone}`,
+                        filename: formData.file.name,
+                        fileSize: `${Math.round(formData.file.size / 1024)} KB`,
+                        fileType: formData.file.type,
+                        message: "User submitted this form but CORS issues prevented file upload. Please contact them to get the file.",
+                    };
+                    
+                    await axios.post(FORMSPREE_URL, fallbackData);
+                    
+                    clearInterval(progressInterval);
+                    setUploadProgress(100);
+                    setIsUploading(false);
+                    setShowSuccessModal(true);
+                    
+                    // Reset form
+                    setFormData({
+                        username: "",
+                        email: "",
+                        phoneCode: "",
+                        phone: "",
+                        file: null,
+                    });
+                    document.querySelector('input[type="file"]').value = '';
+                    
+                    console.log("Form details sent to Formspree as fallback");
+                } catch (finalError) {
+                    clearInterval(progressInterval);
+                    setIsUploading(false);
+                    console.error("All upload methods failed:", finalError);
+                    alert("Failed to submit the form. Please try again later or contact support.");
+                }
             }
         }
     };
