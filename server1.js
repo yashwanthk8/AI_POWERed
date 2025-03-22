@@ -68,7 +68,12 @@ const storage = new GridFsStorage({
 const upload = multer({ storage });
 
 // Enable CORS
-app.use(cors());
+app.use(cors({
+  origin: ['https://finalaipowered.netlify.app', 'http://localhost:5173'],
+  methods: ['GET', 'POST', 'OPTIONS'],
+  credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
 // Middleware to parse incoming request bodies
 app.use(express.json());
