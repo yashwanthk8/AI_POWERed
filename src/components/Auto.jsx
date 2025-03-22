@@ -1,5 +1,7 @@
 import React, { useState } from "react";
 import axios from "axios";
+import FileUploadProgress from "./FileUploadProgress";
+import SuccessModal from "./SuccessModal";
 
 const Auto = () => {
     const [formData, setFormData] = useState({
@@ -9,6 +11,9 @@ const Auto = () => {
         phone: "",
         file: null,
     });
+    const [uploadProgress, setUploadProgress] = useState(0);
+    const [isUploading, setIsUploading] = useState(false);
+    const [showSuccessModal, setShowSuccessModal] = useState(false);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -48,18 +53,46 @@ const Auto = () => {
             : 'http://localhost:5004');
 
         try {
-            // Make POST request to backend server
+            setIsUploading(true);
+            setUploadProgress(0);
+            
+            // Make POST request to backend server with progress tracking
             const response = await axios.post(`${API_URL}/upload`, data, {
                 headers: {
                     "Content-Type": "multipart/form-data",
                 },
+                onUploadProgress: (progressEvent) => {
+                    const percentCompleted = Math.round(
+                        (progressEvent.loaded * 100) / progressEvent.total
+                    );
+                    setUploadProgress(percentCompleted);
+                },
             });
-            alert("Form submitted successfully!");
+            
+            setIsUploading(false);
+            setShowSuccessModal(true);
             console.log(response.data);
+            
+            // Reset form after successful submission
+            setFormData({
+                username: "",
+                email: "",
+                phoneCode: "",
+                phone: "",
+                file: null,
+            });
+            // Reset file input
+            document.querySelector('input[type="file"]').value = '';
+            
         } catch (error) {
+            setIsUploading(false);
             console.error("Error submitting the form", error);
             alert("Failed to submit the form");
         }
+    };
+
+    const closeSuccessModal = () => {
+        setShowSuccessModal(false);
     };
 
     return (
@@ -77,6 +110,7 @@ const Auto = () => {
                         name="username"
                         placeholder="Enter Name"
                         required
+                        value={formData.username}
                         className="w-full mt-1 p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                         onChange={handleChange}
                     />
@@ -91,6 +125,7 @@ const Auto = () => {
                         name="email"
                         placeholder="Enter Email"
                         required
+                        value={formData.email}
                         className="w-full mt-1 p-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                         onChange={handleChange}
                     />
@@ -104,10 +139,11 @@ const Auto = () => {
                         <select
                             name="phoneCode"
                             required
+                            value={formData.phoneCode}
                             className="p-2 border border-gray-300 rounded-l-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             onChange={handleChange}
                         >
-                            <option selected hidden value="">Code</option>
+                            <option value="" hidden>Code</option>
                             <option value="91">+91</option>
                             <option value="98">+98</option>
                             <option value="99">+99</option>
@@ -119,6 +155,7 @@ const Auto = () => {
                             name="phone"
                             placeholder="812XXXXXX"
                             required
+                            value={formData.phone}
                             className="flex-grow p-2 border border-gray-300 rounded-r-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                             onChange={handleChange}
                         />
@@ -138,15 +175,22 @@ const Auto = () => {
                     />
                 </div>
 
-                <div className="flex justify-end">
+                {isUploading && <FileUploadProgress progress={uploadProgress} />}
+
+                <div className="flex justify-end mt-6">
                     <button
                         type="submit"
-                        className="px-4 py-2 text-white bg-blue-500 rounded-md hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        disabled={isUploading}
+                        className={`px-4 py-2 text-white rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 ${
+                            isUploading ? 'bg-blue-300 cursor-not-allowed' : 'bg-blue-500 hover:bg-blue-600'
+                        }`}
                     >
-                        Submit
+                        {isUploading ? 'Uploading...' : 'Submit'}
                     </button>
                 </div>
             </form>
+
+            <SuccessModal isOpen={showSuccessModal} onClose={closeSuccessModal} />
         </div>
     );
 };
