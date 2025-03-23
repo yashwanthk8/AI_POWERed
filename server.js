@@ -3,7 +3,7 @@ import express from 'express';
 import multer from 'multer';
 import cors from 'cors';
 import mongoose from 'mongoose';
-import csvParser from 'csv-parser'; // For CSV parsing
+import csvParser from 'csv-parser'; // For CSV pars  ing
 import xlsx from 'xlsx'; // For Excel parsing
 import fs from 'fs';
 import path from 'path'; // For handling file paths
@@ -29,14 +29,16 @@ mongoose.connect(MONGODB_URI)
   .catch(err => console.error("MongoDB connection error:", err));
 
 // Enable CORS for frontend access
+// Enable CORS for frontend access
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? process.env.FRONTEND_URL || 'https://your-production-domain.com' 
-    : 'http://localhost:5173', // Your frontend URL in development
-  methods: ['GET', 'POST'],
+  origin: process.env.CORS_ORIGIN || 'https://finalaipowered.netlify.app',
+  methods: ['GET', 'POST', 'OPTIONS'],
   credentials: true,
+  allowedHeaders: process.env.ALLOW_HEADERS || 'Content-Type, Authorization, X-Requested-With'
 }));
 
+// Add OPTIONS handling for preflight requests
+app.options('*', cors());
 // Middleware to parse JSON bodies
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
